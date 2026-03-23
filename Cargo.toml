@@ -1,0 +1,16 @@
+[package]
+name = "paperout"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.102"
+chrono = "0.4.44"
+clap = "4.6.0"
+pdf_oxide = "0.3.17"
+regex = "1.12.3"
+serde = "1.0.228"
+serde_json = "1.0.149"
+sha2 = "0.10.9"
+thiserror = "2.0.18"
+toml = "1.0.7"
