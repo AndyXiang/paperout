@@ -133,7 +133,7 @@ impl PersistentNote {
         }
 
         out.push_str("## Abstract\n\n");
-        out.push_str(&self.metadata.abstract_text);
+        out.push_str(&format_abstract_for_markdown(&self.metadata.abstract_text));
         out.push('\n');
         out
     }
@@ -232,9 +232,153 @@ fn escape_yaml_string(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+fn format_abstract_for_markdown(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::new();
+    let mut index = 0;
+
+    while index < chars.len() {
+        let ch = chars[index];
+
+        if ch == '-'
+            && index > 0
+            && chars[index - 1].is_alphabetic()
+            && chars.get(index + 1) == Some(&'\n')
+            && chars
+                .get(index + 2)
+                .is_some_and(|next| next.is_alphabetic())
+        {
+            let prefix_start = out
+                .char_indices()
+                .rev()
+                .find(|(_, current)| !current.is_alphabetic())
+                .map(|(pos, current)| pos + current.len_utf8())
+                .unwrap_or(0);
+            let prefix = out[prefix_start..].to_string();
+            index += 2;
+            let suffix_start = index;
+
+            while index < chars.len() && chars[index].is_alphabetic() {
+                out.push(chars[index]);
+                index += 1;
+            }
+
+            let suffix: String = chars[suffix_start..index].iter().collect();
+            if !should_merge_without_separator(&prefix, &suffix) {
+                let insert_at = out.len().saturating_sub(suffix.len());
+                out.insert(insert_at, '-');
+            }
+
+            while index < chars.len() && matches!(chars[index], '.' | ',' | ';' | ':' | ')' | ']') {
+                out.push(chars[index]);
+                index += 1;
+            }
+
+            out.push('\n');
+
+            while index < chars.len() && matches!(chars[index], ' ' | '\t') {
+                index += 1;
+            }
+
+            if chars.get(index) == Some(&'\n') {
+                index += 1;
+            }
+
+            continue;
+        }
+
+        out.push(ch);
+        index += 1;
+    }
+
+    out
+}
+
+fn should_merge_without_separator(prefix: &str, suffix: &str) -> bool {
+    let continuation_suffixes = [
+        "ability",
+        "able",
+        "ably",
+        "acy",
+        "al",
+        "ally",
+        "ance",
+        "ances",
+        "ant",
+        "ants",
+        "ary",
+        "ation",
+        "ations",
+        "ative",
+        "atively",
+        "ed",
+        "ence",
+        "ences",
+        "ent",
+        "ents",
+        "er",
+        "ers",
+        "est",
+        "fication",
+        "fications",
+        "ful",
+        "fully",
+        "ibility",
+        "ible",
+        "ic",
+        "ical",
+        "ically",
+        "ics",
+        "ified",
+        "ifies",
+        "ify",
+        "ing",
+        "ion",
+        "ions",
+        "isation",
+        "isations",
+        "ise",
+        "ised",
+        "ising",
+        "ism",
+        "ist",
+        "ists",
+        "ity",
+        "ities",
+        "ive",
+        "ively",
+        "ization",
+        "izations",
+        "zation",
+        "zations",
+        "ize",
+        "ized",
+        "izing",
+        "less",
+        "logy",
+        "logical",
+        "ment",
+        "ments",
+        "ness",
+        "ous",
+        "ously",
+        "s",
+        "ship",
+        "ships",
+        "tion",
+        "tions",
+        "ty",
+    ];
+
+    prefix.len() <= 1
+        || continuation_suffixes
+            .iter()
+            .any(|candidate| suffix.eq_ignore_ascii_case(candidate))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{PersistenceConfig, PersistentNoteBuilder};
+    use super::{PersistenceConfig, PersistentNoteBuilder, format_abstract_for_markdown};
     use crate::pdf::metadata::PaperMetadata;
     use std::{
         fs,
@@ -320,5 +464,17 @@ mod tests {
         assert_eq!(note.metadata, sample_metadata());
         assert_eq!(note.pdf_file_name.as_deref(), Some("paper.pdf"));
         assert_eq!(note.markdown_path, markdown_path);
+    }
+
+    #[test]
+    fn formats_hyphenated_abstract_line_breaks() {
+        let formatted = format_abstract_for_markdown(
+            "graph-\nstructured data and generali-\nzation,\nperformance.",
+        );
+
+        assert_eq!(
+            formatted,
+            "graph-structured\ndata and generalization,\nperformance."
+        );
     }
 }
