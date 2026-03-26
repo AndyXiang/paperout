@@ -1,6 +1,7 @@
 mod cli;
 mod command;
 mod pdf;
+mod persist;
 
 use anyhow::{Context, Result};
 
@@ -136,14 +137,16 @@ mod tests {
         );
         assert!(markdown.contains("page_count: 10"));
         assert!(markdown.contains("  - \"Pietro Liò\""));
+        assert!(markdown.contains("# Learning Feynman Diagrams using Graph Neural Networks"));
         assert!(markdown.contains("## Abstract"));
         assert!(markdown.contains(&format!(
             "[[Assets/{asset_id}/2211.15348v1.pdf|Learning Feynman Diagrams using Graph Neural Networks]]"
         )));
         assert!(markdown_path.starts_with(test_workspace.path().join("Library")));
+        let expected_file_name = format!("{asset_id}.md");
         assert_eq!(
             markdown_path.file_name().and_then(|name| name.to_str()),
-            Some("Learning Feynman Diagrams using Graph Neural Networks.md")
+            Some(expected_file_name.as_str())
         );
         assert!(copied_pdf.exists());
     }
@@ -164,13 +167,13 @@ mod tests {
             .expect("add should succeed");
 
         assert_eq!(markdown_paths.len(), 2);
-        assert!(
-            test_workspace
-                .path()
-                .join("Library")
-                .join("Learning Feynman Diagrams using Graph Neural Networks.md")
-                .exists()
-        );
+        assert_eq!(markdown_paths[0], markdown_paths[1]);
+        let markdown_files: Vec<_> = fs::read_dir(test_workspace.path().join("Library"))
+            .expect("library dir should exist")
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("md"))
+            .collect();
+        assert_eq!(markdown_files.len(), 1);
         let asset_dirs = fs::read_dir(test_workspace.path().join("Assets"))
             .expect("assets dir should exist")
             .filter_map(|entry| entry.ok())

@@ -7,7 +7,10 @@ use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
 use toml::Value;
 
-use crate::pdf::{extract::ExtractedPaper, metadata::PaperMetadata, read_pdf_file};
+use crate::{
+    pdf::{extract::ExtractedPaper, metadata::PaperMetadata, read_pdf_file},
+    persist::{PersistenceConfig, PersistentNoteBuilder},
+};
 
 const DEFAULT_LIBRARY_DIR: &str = "Library";
 const DEFAULT_ASSETS_DIR: &str = "Assets";
@@ -70,24 +73,13 @@ impl ProjectWorkspace {
         let mut metadata = PaperMetadata::from_extracted(&paper)?;
         metadata.asset_id = build_asset_id(&metadata);
 
-        let file_name = sanitize_file_name(&metadata.title, &metadata.asset_id);
-        let library_dir = self.project_root.join(&self.config.library_path);
         let assets_dir = self.project_root.join(&self.config.assets_path);
-        let markdown_path = library_dir.join(format!("{file_name}.md"));
         let asset_dir = assets_dir.join(&metadata.asset_id);
         let pdf_file_name = pdf_path
             .file_name()
             .context("failed to resolve PDF file name")?;
         let asset_path = asset_dir.join(pdf_file_name);
-        let pdf_link = format!(
-            "{}/{}/{}",
-            self.config.assets_path.display(),
-            metadata.asset_id,
-            pdf_file_name.to_string_lossy()
-        );
 
-        fs::create_dir_all(&library_dir)
-            .with_context(|| format!("failed to create `{}`", library_dir.display()))?;
         fs::create_dir_all(&asset_dir)
             .with_context(|| format!("failed to create `{}`", asset_dir.display()))?;
 
@@ -98,10 +90,12 @@ impl ProjectWorkspace {
                 asset_path.display()
             )
         })?;
-        fs::write(&markdown_path, metadata.to_markdown(&pdf_link))
-            .with_context(|| format!("failed to write `{}`", markdown_path.display()))?;
-
-        Ok(markdown_path)
+        PersistentNoteBuilder::new()
+            .with_config(self.persistence_config())
+            .with_metadata(metadata)
+            .with_pdf_file_name(pdf_file_name.to_string_lossy())
+            .build()?
+            .write_markdown()
     }
 
     /// Run the `add` workflow for multiple input paths.
@@ -115,23 +109,14 @@ impl ProjectWorkspace {
 
         Ok(markdown_paths)
     }
-}
 
-fn sanitize_file_name(title: &str, asset_id: &str) -> String {
-    let invalid_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
-    let sanitized = title
-        .chars()
-        .filter(|ch| !ch.is_control() && !invalid_chars.contains(ch))
-        .collect::<String>()
-        .trim()
-        .trim_end_matches('.')
-        .to_string();
-
-    if sanitized.is_empty() {
-        return format!("paper-{}", &asset_id[..12]);
+    pub fn persistence_config(&self) -> PersistenceConfig {
+        PersistenceConfig {
+            project_root: self.project_root.clone(),
+            library_path: self.config.library_path.clone(),
+            assets_path: self.config.assets_path.clone(),
+        }
     }
-
-    sanitized
 }
 
 fn build_asset_id(metadata: &PaperMetadata) -> String {
@@ -281,7 +266,7 @@ fn is_pdf_path(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{find_project_root, sanitize_file_name};
+    use super::find_project_root;
     use std::{
         fs,
         path::PathBuf,
@@ -311,24 +296,6 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.root);
         }
-    }
-
-    #[test]
-    fn preserves_title_as_file_name_when_valid() {
-        let file_name = sanitize_file_name("Paper Title", "0123456789abcdef");
-        assert_eq!(file_name, "Paper Title");
-    }
-
-    #[test]
-    fn removes_invalid_file_name_characters() {
-        let file_name = sanitize_file_name("Paper: Title/Version?", "0123456789abcdef");
-        assert_eq!(file_name, "Paper TitleVersion");
-    }
-
-    #[test]
-    fn falls_back_when_file_name_is_empty() {
-        let file_name = sanitize_file_name("///", "0123456789abcdef");
-        assert_eq!(file_name, "paper-0123456789ab");
     }
 
     #[test]

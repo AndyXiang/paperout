@@ -38,35 +38,6 @@ impl PaperMetadata {
             page_count: paper.page_count,
         })
     }
-
-    pub fn to_markdown(&self, pdf_link: &str) -> String {
-        let mut out = String::new();
-        out.push_str("---\n");
-        out.push_str(&format!(
-            "asset_id: \"{}\"\n",
-            escape_yaml_string(&self.asset_id)
-        ));
-        out.push_str(&format!("title: \"{}\"\n", escape_yaml_string(&self.title)));
-        out.push_str(&format!("page_count: {}\n", self.page_count));
-        out.push_str("author:\n");
-        for author in &self.author {
-            out.push_str(&format!("  - \"{}\"\n", escape_yaml_string(author)));
-        }
-        out.push_str("---\n\n");
-        out.push_str(&format!(
-            "[[{}|{}]]\n",
-            pdf_link,
-            escape_yaml_string(&self.title)
-        ));
-        out.push_str("\n## Abstract\n\n");
-        out.push_str(&self.abstract_text);
-        out.push('\n');
-        out
-    }
-}
-
-fn escape_yaml_string(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 fn collapse_inline_whitespace(value: &str) -> String {
